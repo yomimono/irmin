@@ -124,6 +124,7 @@ let irmin_version = "X-IrminVersion"
 let content_type_header = "Content-type"
 let application_json = "application/json"
 let application_octet_stream = "application/octet-stream"
+let access_control_origin = "Access-Control-Allow-Origin"
 
 type ct = [ `Json | `Raw ]
 
@@ -134,11 +135,11 @@ let ct_of_header h =
   else `Json
 
 let html_headers =
-  Cohttp.Header.of_list []
+  Cohttp.Header.of_list [(access_control_origin, "*")]
 let json_headers =
-  Cohttp.Header.of_list [content_type_header, application_json]
+  Cohttp.Header.of_list [(access_control_origin, "*"); content_type_header, application_json]
 let raw_headers  =
-  Cohttp.Header.of_list [content_type_header, application_octet_stream]
+  Cohttp.Header.of_list [(access_control_origin, "*"); content_type_header, application_octet_stream]
 
 let header_of_ct = function
   | `Json -> application_json

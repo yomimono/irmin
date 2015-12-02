@@ -28,8 +28,16 @@ module type S = sig
   type spec
   (** HTTP configuration. *)
 
+  type processor
+  (** callback for HTTP *)
+
   val http_spec: ?strict:bool -> ?hooks:hooks -> t -> spec
   (** [http_spec t] returns the configuration for a server serving the contents of [t].
+      If [strict] is set, incoming connections will fail if they do not have the right
+      {i X-IrminVersion} headers. *)
+
+  val callback: ?strict:bool -> ?hooks:hooks -> t -> processor
+  (** [http_spec t] returns a callback for presentation to HTTP serving the contents of [t].
       If [strict] is set, incoming connections will fail if they do not have the right
       {i X-IrminVersion} headers. *)
 
@@ -44,5 +52,7 @@ end
 
 module Make (HTTP: Cohttp_lwt.Server) (D: DATE) (S: Irmin.S): S with
   type t = S.t and
-  type spec = HTTP.t
+  type spec = HTTP.t and
+  type processor = HTTP.conn -> Cohttp.Request.t -> Cohttp_lwt_body.t ->
+    (Cohttp.Response.t * Cohttp_lwt_body.t) Lwt.t
 (** Create an HTTP server, serving the contents of an Irmin database. *)

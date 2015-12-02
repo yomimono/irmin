@@ -49,7 +49,9 @@ let lwt_stream_lift s =
 module type S = sig
   type t
   type spec
+  type processor
   val http_spec: ?strict:bool -> ?hooks:hooks -> t -> spec
+  val callback: ?strict:bool -> ?hooks:hooks -> t -> processor
 end
 
 module type DATE = sig
@@ -93,6 +95,7 @@ module Make (HTTP: Cohttp_lwt.Server) (D: DATE) (S: Irmin.S) = struct
 
   let respond_error ct e =
     let headers, body = Response.to_body ct (`Error e) in
+    let headers = Cohttp.Header.add headers "Access-Control-Allow-Origin" "*" in
     Log.error "server error %s" (Printexc.to_string e);
     HTTP.respond ~headers
       ~status:`Internal_server_error
@@ -101,10 +104,13 @@ module Make (HTTP: Cohttp_lwt.Server) (D: DATE) (S: Irmin.S) = struct
   let respond_contents contents =
     let ct = ct_of_contents (Some contents) in
     let headers, body = Response.to_body ct (`Ok contents) in
+    let headers = Cohttp.Header.add headers "Access-Control-Allow-Origin" "*" in
     HTTP.respond ~headers ~status:`OK ~body ()
 
   let respond_json body = respond_contents (json body)
-  let respond_html body = HTTP.respond_string ~status:`OK ~body ()
+  let respond_html body =
+    let headers = Cohttp.Header.(add (init ()) "Access-Control-Allow-Origin" "*") in
+    HTTP.respond_string ~headers ~status:`OK ~body ()
 
   let respond_json_stream stream =
     let irmin_version = Ezjsonm.encode_string Irmin.version in
@@ -883,7 +889,10 @@ module Make (HTTP: Cohttp_lwt.Server) (D: DATE) (S: Irmin.S) = struct
 
   type t = S.t
 
-  let http_spec ?strict ?(hooks=no_hooks) t =
+  type processor = HTTP.conn -> Cohttp.Request.t -> Cohttp_lwt_body.t ->
+    (Cohttp.Response.t * Cohttp_lwt_body.t) Lwt.t
+
+  let callback ?strict ?(hooks=no_hooks) t =
     let dispatch = dispatch hooks in
     let callback (_, conn_id) req body =
       let uri = Cohttp.Request.uri req in
@@ -902,9 +911,13 @@ module Make (HTTP: Cohttp_lwt.Server) (D: DATE) (S: Irmin.S) = struct
           with e -> Lwt.fail e
         ) (fun e -> respond_error ct e)
     in
+    callback
+
+  let http_spec ?strict ?(hooks=no_hooks) t =
     let conn_closed (_, conn_id) =
       Log.debug "Connection %s: closed!" (Cohttp.Connection.to_string conn_id)
     in
+    let callback = callback ?strict ~hooks t in
     HTTP.make ~callback ~conn_closed ()
 
 end
